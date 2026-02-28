@@ -1,0 +1,37 @@
+#version 450
+// OverclockCTL — GPU Benchmark Compute Shader
+// Compile with: glslangValidator -V benchmark.comp -o benchmark.spv
+//
+// Workload: each thread performs N/256 multiply-accumulate ops
+// on arrays A and B, writing the result to C.
+// This exercises the GPU's FP32 ALUs across the entire SIMT width.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer BufA {
+    float a[];
+};
+layout(std430, set = 0, binding = 1) readonly buffer BufB {
+    float b[];
+};
+layout(std430, set = 0, binding = 2) writeonly buffer BufC {
+    float c[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint N;   // total element count (must be power of 2)
+} pc;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.N) return;
+
+    float acc = 0.0;
+    // Strided MAC loop — creates ILP and exercises memory subsystem
+    for (uint k = 0u; k < pc.N; k += 256u) {
+        uint ai = (idx + k) % pc.N;
+        uint bi = (idx * k + 1u) % pc.N;
+        acc = fma(a[ai], b[bi], acc);
+    }
+    c[idx] = acc;
+}
